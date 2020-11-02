@@ -8,11 +8,11 @@ import {
   CharacteristicGetCallback,
   CharacteristicValue,
   CharacteristicSetCallback,
-  WithUUID
+  WithUUID,
 } from "homebridge";
 
 import _axios from "axios";
-import jwt_decode from "jwt-decode"
+import jwt_decode from "jwt-decode";
 
 const PLUGIN_NAME = "homebridge-iotas";
 const PLATFORM_NAME = "homebridge-iotas";
@@ -24,7 +24,7 @@ export = (api: API) => {
 const IOTAS_URL = "https://api.iotashome.com/api/v1";
 
 const axios = _axios.create({
-  baseURL: IOTAS_URL
+  baseURL: IOTAS_URL,
 });
 
 interface Config extends PlatformConfig {
@@ -83,8 +83,9 @@ class HomebridgeIotas {
 
   token: string | null = null;
   refreshToken = "";
+  authenticateRequest: Promise<string | void> | null = null;
 
-  lastUpdatedBrightness: {[key: string]: number} = {};
+  lastUpdatedBrightness: { [key: string]: number } = {};
 
   constructor(
     public readonly log: Logger,
@@ -105,25 +106,30 @@ class HomebridgeIotas {
   }
 
   getFeature(featureId: string) {
-    return this.withAuth().then(api => 
-      api.get("/feature/" + featureId)
-      .then((response) => {
+    return this.withAuth().then((api) =>
+      api.get("/feature/" + featureId).then((response) => {
         return response.data as Feature;
-      }));
+      })
+    );
   }
-  
+
   updateFeature(featureId: string, value: CharacteristicValue) {
     let body = {
       value: value,
     };
-    return this.withAuth().then(api => api
-      .put(`/feature/${featureId}`, body)
-      .then((response) => {
+    return this.withAuth().then((api) =>
+      api.put(`/feature/${featureId}`, body).then((response) => {
         return response.data;
-      }));
+      })
+    );
   }
 
-  getCharacteristic(isBoolean: boolean, scale100: boolean, featureId: string, next: CharacteristicGetCallback) {
+  getCharacteristic(
+    isBoolean: boolean,
+    scale100: boolean,
+    featureId: string,
+    next: CharacteristicGetCallback
+  ) {
     this.getFeature(featureId)
       .then((res) => {
         const value = scale100 ? Number(res.value) * 100 : Number(res.value);
@@ -136,7 +142,12 @@ class HomebridgeIotas {
       });
   }
 
-  setCharacteristic(scale100: boolean, featureId: string, newValue: CharacteristicValue, next: CharacteristicSetCallback) {
+  setCharacteristic(
+    scale100: boolean,
+    featureId: string,
+    newValue: CharacteristicValue,
+    next: CharacteristicSetCallback
+  ) {
     if (scale100) {
       newValue = Number(newValue) / 100;
     }
@@ -154,8 +165,8 @@ class HomebridgeIotas {
   }
 
   initServices(accessory: PlatformAccessory) {
-
-    accessory.getService(this.Service.AccessoryInformation)!!
+    accessory
+      .getService(this.Service.AccessoryInformation)!!
       .setCharacteristic(this.Characteristic.Manufacturer, "IOTAS")
       .setCharacteristic(this.Characteristic.Model, "switch")
       .setCharacteristic(this.Characteristic.SerialNumber, "123-456-789");
@@ -168,8 +179,19 @@ class HomebridgeIotas {
       }
       service
         .getCharacteristic(this.Characteristic.On)
-        .on("get", this.getCharacteristic.bind(this, true, false, accessory.context.featureId))
-        .on("set", this.setCharacteristic.bind(this, false, accessory.context.featureId));
+        .on(
+          "get",
+          this.getCharacteristic.bind(
+            this,
+            true,
+            false,
+            accessory.context.featureId
+          )
+        )
+        .on(
+          "set",
+          this.setCharacteristic.bind(this, false, accessory.context.featureId)
+        );
       const hasLightbulbService = accessory.getService(this.Service.Lightbulb);
       if (typeof hasLightbulbService !== "undefined") {
         accessory.removeService(hasLightbulbService);
@@ -182,29 +204,71 @@ class HomebridgeIotas {
       }
       service
         .getCharacteristic(this.Characteristic.Brightness)
-        .on("get", this.getCharacteristic.bind(this, false, true, accessory.context.featureId))
-        .on("set", (newValue: CharacteristicValue, next: CharacteristicSetCallback) => {
-          this.lastUpdatedBrightness[accessory.UUID] = Date.now();
-          this.setCharacteristic(true, accessory.context.featureId, newValue, () => {
-            service?.updateCharacteristic(this.Characteristic.Brightness, Number(newValue));
-            next();
-          });
-        });
+        .on(
+          "get",
+          this.getCharacteristic.bind(
+            this,
+            false,
+            true,
+            accessory.context.featureId
+          )
+        )
+        .on(
+          "set",
+          (newValue: CharacteristicValue, next: CharacteristicSetCallback) => {
+            this.lastUpdatedBrightness[accessory.UUID] = Date.now();
+            this.setCharacteristic(
+              true,
+              accessory.context.featureId,
+              newValue,
+              () => {
+                service?.updateCharacteristic(
+                  this.Characteristic.Brightness,
+                  Number(newValue)
+                );
+                next();
+              }
+            );
+          }
+        );
       service
         .getCharacteristic(this.Characteristic.On)
-        .on("get", this.getCharacteristic.bind(this, true, true, accessory.context.featureId))
-        .on("set", (newValue: CharacteristicValue, next: CharacteristicSetCallback) => {
-          setTimeout(() => {
-            if (newValue === 0 || Date.now() - (this.lastUpdatedBrightness[accessory.UUID] || 0) > 150) {
-              this.setCharacteristic(false, accessory.context.featureId, newValue, () => {
-                service?.updateCharacteristic(this.Characteristic.Brightness, Number(newValue) * 100);
+        .on(
+          "get",
+          this.getCharacteristic.bind(
+            this,
+            true,
+            true,
+            accessory.context.featureId
+          )
+        )
+        .on(
+          "set",
+          (newValue: CharacteristicValue, next: CharacteristicSetCallback) => {
+            setTimeout(() => {
+              if (
+                newValue === 0 ||
+                Date.now() - (this.lastUpdatedBrightness[accessory.UUID] || 0) >
+                  150
+              ) {
+                this.setCharacteristic(
+                  false,
+                  accessory.context.featureId,
+                  newValue,
+                  () => {
+                    service?.updateCharacteristic(
+                      this.Characteristic.Brightness,
+                      Number(newValue) * 100
+                    );
+                    next();
+                  }
+                );
+              } else {
                 next();
-              });
-            } else {
-              next();
-            }
-          }, 50);
-        });
+              }
+            }, 50);
+          }
+        );
       const hasSwitchService = accessory.getService(this.Service.Switch);
       if (typeof hasSwitchService !== "undefined") {
         accessory.removeService(hasSwitchService);
@@ -255,7 +319,9 @@ class HomebridgeIotas {
       this.accessories.push(accessory);
 
       // register the accessory
-      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+        accessory,
+      ]);
     } else {
       existingAccessory.context.type = type;
       existingAccessory.context.featureId = feature.id;
@@ -268,27 +334,35 @@ class HomebridgeIotas {
   }
 
   discoverDevices() {
-    this.withAuth().then(api => {
-      api.get("/account/me").then(response => {
+    this.withAuth().then((api) => {
+      api.get("/account/me").then((response) => {
         const accountId = response.data.id;
         this.log.info("Found account id " + accountId);
-        api.get("/account/" + accountId + "/residency").then(response => {
+        api.get("/account/" + accountId + "/residency").then((response) => {
           if (response.data.length > 0) {
             const unit = response.data[0].unit;
             this.log.info("Found unit " + unit);
-            api.get("unit/" + unit + "/rooms").then(response => {
+            api.get("unit/" + unit + "/rooms").then((response) => {
               const rooms = response.data as Rooms;
-              const deviceIds = rooms.map(room => 
+              const deviceIds = rooms.map((room) =>
                 room.devices.map(this.tryAddDevice.bind(this, room.name))
               );
-              this.accessories.forEach(accessory => {
-                if (!deviceIds.some(ids => ids.some(id => id === accessory.context.deviceId))) {
-                  this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+              this.accessories.forEach((accessory) => {
+                if (
+                  !deviceIds.some((ids) =>
+                    ids.some((id) => id === accessory.context.deviceId)
+                  )
+                ) {
+                  this.api.unregisterPlatformAccessories(
+                    PLUGIN_NAME,
+                    PLATFORM_NAME,
+                    [accessory]
+                  );
                 }
               });
             });
           } else {
-            this.log.error("Unable to find any units. Abandoning...")
+            this.log.error("Unable to find any units. Abandoning...");
           }
         });
       });
@@ -296,12 +370,14 @@ class HomebridgeIotas {
   }
 
   withAuth() {
-    return this.getToken().then(token => _axios.create({
-      baseURL: IOTAS_URL,
-      headers: {
-        Authorization: "Bearer " + token
-      }
-    }))
+    return this.getToken().then((token) =>
+      _axios.create({
+        baseURL: IOTAS_URL,
+        headers: {
+          Authorization: "Bearer " + token,
+        },
+      })
+    );
   }
 
   getToken() {
@@ -311,47 +387,54 @@ class HomebridgeIotas {
     let decoded = jwt_decode(this.token) as any;
     let oneMinuteFromNow = (Date.now() + 1000 * 60) / 1000;
     if (decoded.exp < oneMinuteFromNow) {
-      return this.authenticate();
+      return this.refreshAccessToken();
     } else {
       return Promise.resolve(this.token);
     }
   }
-  
+
   refreshAccessToken() {
-  
     let body = {
       refresh: this.refreshToken,
       email: this.config.username,
     };
-    return axios
-      .post(`/auth/refresh`, body)
-      .then((response) => {
-        this.token = response.data.jwt as string;
-        return this.token;
-      })
-      .catch((error) => {
-        console.log("error: ");
-        console.log(error);
-      });
+    if (this.authenticateRequest === null) {
+      this.authenticateRequest = axios
+        .post(`/auth/refresh`, body)
+        .then((response) => {
+          this.token = response.data.jwt as string;
+          return this.token;
+        })
+        .catch((error) => {
+          console.log("error: ");
+          console.log(error);
+        });
+      this.authenticateRequest.finally(() => (this.authenticateRequest = null));
+    }
+    return this.authenticateRequest;
   }
 
   authenticate() {
     let config = {
       auth: {
         username: this.config.username,
-        password: this.config.password
+        password: this.config.password,
       },
     };
-    return axios
-      .post(`/auth/tokenwithrefresh`, {}, config)
-      .then((response) => {
-        this.refreshToken = response.data.refresh;
-        this.token = response.data.jwt;
-        return this.token as string;
-      })
-      .catch((error) => {
-        console.log("error: ");
-        console.log(error);
-      });
+    if (this.authenticateRequest === null) {
+      this.authenticateRequest = axios
+        .post(`/auth/tokenwithrefresh`, {}, config)
+        .then((response) => {
+          this.refreshToken = response.data.refresh;
+          this.token = response.data.jwt;
+          return this.token as string;
+        })
+        .catch((error) => {
+          console.log("error: ");
+          console.log(error);
+        });
+      this.authenticateRequest.finally(() => (this.authenticateRequest = null));
+    }
+    return this.authenticateRequest;
   }
 }

@@ -326,7 +326,6 @@ class HomebridgeIotas {
     return axios
       .post(`/auth/refresh`, body)
       .then((response) => {
-        this.refreshToken = response.data.refresh;
         this.token = response.data.jwt as string;
         return this.token;
       })

@@ -1,6 +1,6 @@
 {
   "name": "homebridge-iotas",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A homebridge plugin to control an IOTAS switch",
   "main": "dist/index.js",
   "keywords": [
@@ -26,7 +26,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/stevesample/homebridge-iotas-switch.git"
+    "url": "git+https://github.com/kpsuperplane/homebridge-iotas.git"
   },
   "devDependencies": {
     "@types/jwt-decode": "^2.2.1",
@@ -38,7 +38,7 @@
     "typescript": "^4.0.5"
   },
   "bugs": {
-    "url": "https://github.com/stevesample/homebridge-iotas-switch/issues"
+    "url": "https://github.com/kpsuperplane/homebridge-iotas/issues"
   },
-  "homepage": "https://github.com/stevesample/homebridge-iotas-switch#readme"
+  "homepage": "https://github.com/kpsuperplane/homebridge-iotas#readme"
 }

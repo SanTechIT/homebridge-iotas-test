@@ -385,9 +385,9 @@ class HomebridgeIotas {
       return this.authenticate();
     }
     let decoded = jwt_decode(this.token) as any;
-    let oneMinuteFromNow = (Date.now() + 1000 * 60) / 1000;
-    if (decoded.exp < oneMinuteFromNow) {
-      return this.refreshAccessToken();
+    let now = Date.now() / 1000;
+    if (decoded.exp < now) {
+      return this.authenticate();
     } else {
       return Promise.resolve(this.token);
     }

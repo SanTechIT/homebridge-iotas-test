@@ -64,8 +64,18 @@ interface Feature {
   featureType: number;
   featureTypeName: string;
   featureTypeCategory: string;
+  featureTypeSettable: boolean;
   name: string;
-  value: number | boolean;
+  value: number;
+  values?: string;
+}
+
+function cToF(c: any) {
+  return (Number(c) * 9) / 5 + 32;
+}
+
+function fToC(f: any) {
+  return ((Number(f) - 32) * 5) / 9;
 }
 
 /**
@@ -125,15 +135,13 @@ class HomebridgeIotas {
   }
 
   getCharacteristic(
-    isBoolean: boolean,
-    scale100: boolean,
     featureId: string,
+    format: null | ((value: number) => CharacteristicValue),
     next: CharacteristicGetCallback
   ) {
     this.getFeature(featureId)
       .then((res) => {
-        const value = scale100 ? Number(res.value) * 100 : Number(res.value);
-        return next(null, isBoolean ? value > 0 : value);
+        return next(null, format === null ? res.value : format(res.value));
       })
       .catch((err) => {
         this.log.error("error getting value");
@@ -143,17 +151,12 @@ class HomebridgeIotas {
   }
 
   setCharacteristic(
-    scale100: boolean,
     featureId: string,
-    newValue: CharacteristicValue,
+    format: null | ((value: CharacteristicValue) => number),
+    value: CharacteristicValue,
     next: CharacteristicSetCallback
   ) {
-    if (scale100) {
-      newValue = Number(newValue) / 100;
-    }
-    let value = Number(newValue);
-
-    this.updateFeature(featureId, value)
+    this.updateFeature(featureId, format === null ? value : format(value))
       .then((res) => {
         return next();
       })
@@ -171,107 +174,316 @@ class HomebridgeIotas {
       .setCharacteristic(this.Characteristic.Model, "switch")
       .setCharacteristic(this.Characteristic.SerialNumber, "123-456-789");
 
-    if (accessory.context.type === "OnOff") {
-      let service = accessory.getService(this.Service.Switch);
-      if (typeof service === "undefined") {
-        service = new this.Service.Switch(accessory.displayName);
-        accessory.addService(service);
-      }
-      service
-        .getCharacteristic(this.Characteristic.On)
-        .on(
-          "get",
-          this.getCharacteristic.bind(
-            this,
-            true,
-            false,
-            accessory.context.featureId
+    const device = accessory.context as Device;
+
+    const services = new Set();
+
+    for (const feature of device.features ?? []) {
+      if (
+        !feature.featureTypeSettable &&
+        !(["current_temperature", "battery"].includes(feature.featureTypeCategory))
+      )
+        continue;
+      if (feature.eventTypeName === "OnOff") {
+        let service = accessory.getService(this.Service.Switch);
+        if (typeof service === "undefined") {
+          service = new this.Service.Switch(accessory.displayName);
+          accessory.addService(service);
+        }
+        services.add(service);
+        service
+          .getCharacteristic(this.Characteristic.On)
+          .on(
+            "get",
+            this.getCharacteristic.bind(
+              this,
+              feature.id.toString(),
+              (value: number) => value === 1
+            )
           )
-        )
-        .on(
-          "set",
-          this.setCharacteristic.bind(this, false, accessory.context.featureId)
-        );
-      const hasLightbulbService = accessory.getService(this.Service.Lightbulb);
-      if (typeof hasLightbulbService !== "undefined") {
-        accessory.removeService(hasLightbulbService);
-      }
-    } else if (accessory.context.type === "Level") {
-      let service = accessory.getService(this.Service.Lightbulb);
-      if (typeof service === "undefined") {
-        service = new this.Service.Lightbulb(accessory.displayName);
-        accessory.addService(service);
-      }
-      service
-        .getCharacteristic(this.Characteristic.Brightness)
-        .on(
-          "get",
-          this.getCharacteristic.bind(
-            this,
-            false,
-            true,
-            accessory.context.featureId
+          .on(
+            "set",
+            this.setCharacteristic.bind(this, feature.id.toString(), (v) =>
+              Number(v)
+            )
+          );
+      } else if (
+        feature.eventTypeName === "Level" &&
+        feature.featureTypeCategory === "light"
+      ) {
+        let service = accessory.getService(this.Service.Lightbulb);
+        if (typeof service === "undefined") {
+          service = new this.Service.Lightbulb(accessory.displayName);
+          accessory.addService(service);
+        }
+        services.add(service);
+        service
+          .getCharacteristic(this.Characteristic.Brightness)
+          .on(
+            "get",
+            this.getCharacteristic.bind(
+              this,
+              feature.id.toString(),
+              (v) => v * 100
+            )
           )
-        )
-        .on(
-          "set",
-          (newValue: CharacteristicValue, next: CharacteristicSetCallback) => {
-            this.lastUpdatedBrightness[accessory.UUID] = Date.now();
-            this.setCharacteristic(
-              true,
-              accessory.context.featureId,
-              newValue,
-              () => {
-                service?.updateCharacteristic(
-                  this.Characteristic.Brightness,
-                  Number(newValue)
-                );
-                next();
-              }
+          .on(
+            "set",
+            (
+              newValue: CharacteristicValue,
+              next: CharacteristicSetCallback
+            ) => {
+              this.lastUpdatedBrightness[accessory.UUID] = Date.now();
+              this.setCharacteristic(
+                feature.id.toString(),
+                null,
+                Number(newValue) / 100,
+                next
+              );
+            }
+          );
+        service
+          .getCharacteristic(this.Characteristic.On)
+          .on(
+            "get",
+            this.getCharacteristic.bind(
+              this,
+              feature.id.toString(),
+              (v) => v > 0
+            )
+          )
+          .on(
+            "set",
+            (
+              newValue: CharacteristicValue,
+              next: CharacteristicSetCallback
+            ) => {
+              setTimeout(() => {
+                if (
+                  newValue === 0 ||
+                  Date.now() -
+                    (this.lastUpdatedBrightness[accessory.UUID] || 0) >
+                    150
+                ) {
+                  this.setCharacteristic(
+                    feature.id.toString(),
+                    null,
+                    Number(newValue) / 100,
+                    () => {
+                      service?.updateCharacteristic(
+                        this.Characteristic.Brightness,
+                        Number(newValue) * 100
+                      );
+                      next();
+                    }
+                  );
+                } else {
+                  next();
+                }
+              }, 50);
+            }
+          );
+      } else if (feature.eventTypeName === "Temperature") {
+        let service = accessory.getService(this.Service.Thermostat);
+        if (typeof service === "undefined") {
+          service = new this.Service.Thermostat(accessory.displayName);
+          accessory.addService(service);
+        }
+        services.add(service);
+        if (feature.featureTypeCategory === "current_temperature") {
+          service
+            .getCharacteristic(this.Characteristic.CurrentTemperature)
+            .on(
+              "get",
+              this.getCharacteristic.bind(this, feature.id.toString(), fToC)
             );
-          }
-        );
-      service
-        .getCharacteristic(this.Characteristic.On)
-        .on(
-          "get",
-          this.getCharacteristic.bind(
-            this,
-            true,
-            true,
-            accessory.context.featureId
-          )
-        )
-        .on(
-          "set",
-          (newValue: CharacteristicValue, next: CharacteristicSetCallback) => {
-            setTimeout(() => {
-              if (
-                newValue === 0 ||
-                Date.now() - (this.lastUpdatedBrightness[accessory.UUID] || 0) >
-                  150
-              ) {
-                this.setCharacteristic(
-                  false,
-                  accessory.context.featureId,
-                  newValue,
-                  () => {
-                    service?.updateCharacteristic(
-                      this.Characteristic.Brightness,
-                      Number(newValue) * 100
-                    );
-                    next();
+        }
+        if (feature.featureTypeCategory === "heat_set_point") {
+          service
+            .getCharacteristic(this.Characteristic.HeatingThresholdTemperature)
+            .on(
+              "get",
+              this.getCharacteristic.bind(this, feature.id.toString(), fToC)
+            ).on("set", this.setCharacteristic.bind(this, feature.id.toString(), cToF));
+        }
+        if (feature.featureTypeCategory === "cool_set_point") {
+          service
+            .getCharacteristic(this.Characteristic.CoolingThresholdTemperature)
+            .on(
+              "get",
+              this.getCharacteristic.bind(this, feature.id.toString(), fToC)
+            ).on("set", this.setCharacteristic.bind(this, feature.id.toString(), cToF));
+          const tempCats = ["cool_set_point", "heat_set_point"];
+          if (tempCats.includes(feature.featureTypeCategory)) {
+            const features = tempCats.reduce((acc, cur) => {
+              const feature = device.features.find(
+                (feature) => feature.featureTypeCategory === cur
+              );
+              if (feature !== undefined) {
+                acc[cur] = feature;
+              }
+              return acc;
+            }, {} as Record<string, Feature>);
+            service
+              .getCharacteristic(this.Characteristic.TargetTemperature)
+              .on("get", (next: CharacteristicGetCallback) => {
+                const modeFeature = device.features.find(
+                  (feature) => feature.featureTypeCategory === "thermostat_mode"
+                )!!;
+                this.getCharacteristic(
+                  modeFeature.id.toString(),
+                  null,
+                  (_: any, value: any) => {
+                    const mode = (
+                      modeFeature.values?.split(":")?.[Number(value)] ?? ""
+                    ).toLowerCase();
+                    if (mode.includes("cool")) {
+                      this.getCharacteristic(
+                        features["cool_set_point"].id.toString(),
+                        fToC,
+                        next
+                      );
+                    } else if (mode.includes("heat")) {
+                      this.getCharacteristic(
+                        features["heat_set_point"].id.toString(),
+                        fToC,
+                        next
+                      );
+                    } else {
+                      this.getCharacteristic(
+                        features["cool_set_point"].id.toString(),
+                        fToC,
+                        (_: any, cool: any) => {
+                          this.getCharacteristic(
+                            features["heat_set_point"].id.toString(),
+                            fToC,
+                            (_: any, heat: any) =>
+                              next(null, (Number(heat) + Number(cool)) / 2)
+                          );
+                        }
+                      );
+                    }
                   }
                 );
-              } else {
-                next();
-              }
-            }, 50);
+              })
+              .on(
+                "set",
+                (
+                  newValue: CharacteristicValue,
+                  next: CharacteristicSetCallback
+                ) => {
+                  const modeFeature = device.features.find(
+                    (feature) => feature.featureTypeCategory === "thermostat_mode"
+                  )!!;
+                  this.getCharacteristic(
+                    modeFeature.id.toString(),
+                    null,
+                    (_: any, value: any) => {
+                      const mode = (
+                        modeFeature.values?.split(":")?.[Number(value)] ?? ""
+                      ).toLowerCase();
+                      if (mode.includes("cool")) {
+                        this.setCharacteristic(
+                          features["cool_set_point"].id.toString(),
+                          cToF,
+                          newValue,
+                          next
+                        );
+                      } else if (mode.includes("heat")) {
+                        this.setCharacteristic(
+                          features["heat_set_point"].id.toString(),
+                          cToF,
+                          newValue,
+                          next
+                        );
+                      } else {
+                        next();
+                      }
+                    }
+                  );
+                }
+              );
           }
-        );
-      const hasSwitchService = accessory.getService(this.Service.Switch);
-      if (typeof hasSwitchService !== "undefined") {
-        accessory.removeService(hasSwitchService);
+        }
+      } else if (feature.eventTypeName === "ThermostatMode") {
+        let service = accessory.getService(this.Service.Thermostat);
+        if (typeof service === "undefined") {
+          service = new this.Service.Thermostat(accessory.displayName);
+          accessory.addService(service);
+        }
+        services.add(service);
+        const split = feature.values?.split(":") ?? [];
+        const states = split.map((state) => {
+          const s = state.toLowerCase();
+          if (s.includes("heat")) {
+            return this.Characteristic.TargetHeatingCoolingState.HEAT;
+          } else if (s.includes("cool")) {
+            return this.Characteristic.TargetHeatingCoolingState.COOL;
+          } else if (s.includes("off")) {
+            return this.Characteristic.TargetHeatingCoolingState.OFF;
+          } else {
+            return this.Characteristic.TargetHeatingCoolingState.AUTO;
+          }
+        });
+        service
+          .getCharacteristic(this.Characteristic.TargetHeatingCoolingState)
+          .on(
+            "get",
+            this.getCharacteristic.bind(
+              this,
+              feature.id.toString(),
+              (value: number) => states[value]
+            )
+          )
+          .on(
+            "set",
+            this.setCharacteristic.bind(
+              this,
+              feature.id.toString(),
+              (v) =>
+                ({
+                  [this.Characteristic.TargetHeatingCoolingState.HEAT.toString()]: split.indexOf(
+                    "Heat"
+                  ),
+                  [this.Characteristic.TargetHeatingCoolingState.COOL.toString()]: split.indexOf(
+                    "Cool"
+                  ),
+                  [this.Characteristic.TargetHeatingCoolingState.OFF.toString()]: split.indexOf(
+                    "Off"
+                  ),
+                  [this.Characteristic.TargetHeatingCoolingState.AUTO.toString()]: split.indexOf(
+                    "Auto"
+                  ),
+                }[v.toString()])
+            )
+          );
+      } else if (feature.featureTypeName === "Battery") {
+        let service = accessory.getService(this.Service.BatteryService);
+        if (typeof service === "undefined") {
+          service = new this.Service.BatteryService(accessory.displayName);
+          accessory.addService(service);
+        }
+        services.add(service);
+        service
+          .getCharacteristic(this.Characteristic.BatteryLevel)
+          .on(
+            "get",
+            this.getCharacteristic.bind(
+              this,
+              feature.id.toString(),
+              null
+            )
+          );
+      }
+    }
+    for (const service of accessory.services) {
+      if (
+        [this.Service.Switch, this.Service.Lightbulb].some(
+          (svcType) => service instanceof svcType
+        ) &&
+        !services.has(service)
+      ) {
+        accessory.removeService(service);
       }
     }
   }
@@ -290,14 +502,17 @@ class HomebridgeIotas {
   }
 
   tryAddDevice(roomName: string, device: Device) {
-    const feature = device.features.find((feature) =>
-      ["lock", "light"].includes(feature.featureTypeCategory)
-    );
-
-    if (typeof feature === "undefined") return null;
+    if (
+      !device.features.some(
+        (feature) =>
+          ["Temperature", "OnOff", "Level", "ThermostatMode"].includes(feature.eventTypeName) &&
+          (feature.featureTypeSettable ||
+            feature.featureTypeCategory === "current_temperature")
+      )
+    )
+      return null;
 
     const uuid = this.api.hap.uuid.generate(device.id.toString());
-    const type = feature.eventTypeName;
     const name = roomName + " " + device.name;
 
     const existingAccessory = this.accessories.find(
@@ -308,9 +523,7 @@ class HomebridgeIotas {
     if (!existingAccessory) {
       // create a new accessory
       const accessory = new this.api.platformAccessory(name, uuid);
-      accessory.context.type = type;
-      accessory.context.featureId = feature.id;
-      accessory.context.deviceId = device.id;
+      accessory.context = device;
 
       this.log.info("Adding new accessory:", name);
 
@@ -323,9 +536,7 @@ class HomebridgeIotas {
         accessory,
       ]);
     } else {
-      existingAccessory.context.type = type;
-      existingAccessory.context.featureId = feature.id;
-      existingAccessory.context.deviceId = device.id;
+      existingAccessory.context = device;
       this.log.info("Updating accessory:", name);
       this.api.updatePlatformAccessories([existingAccessory]);
     }
@@ -350,7 +561,7 @@ class HomebridgeIotas {
               this.accessories.forEach((accessory) => {
                 if (
                   !deviceIds.some((ids) =>
-                    ids.some((id) => id === accessory.context.deviceId)
+                    ids.some((id) => id === accessory.context.id)
                   )
                 ) {
                   this.api.unregisterPlatformAccessories(

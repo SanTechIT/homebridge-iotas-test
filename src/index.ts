@@ -44,6 +44,7 @@ interface Room {
 interface Device {
   id: number;
   room: number;
+  unit: number;
   deviceTemplateId: number;
   deviceType: number;
   name: string;
@@ -94,6 +95,8 @@ class HomebridgeIotas {
   token: string | null = null;
   refreshToken = "";
   authenticateRequest: Promise<string | void> | null = null;
+  unitRequest: Promise<Rooms> | null = null;
+  unit: number = 0;
 
   lastUpdatedBrightness: { [key: string]: number } = {};
 
@@ -115,12 +118,31 @@ class HomebridgeIotas {
     });
   }
 
+  getUnit() {
+    return this.withAuth().then((api) => {
+      if (this.unitRequest === null) {
+        this.unitRequest = api
+          .get("unit/" + this.unit + "/rooms")
+          .then((response) => response.data as Rooms);
+        this.unitRequest.then(() => (this.unitRequest = null));
+      }
+      return this.unitRequest;
+    });
+  }
+
   getFeature(featureId: string) {
-    return this.withAuth().then((api) =>
-      api.get("/feature/" + featureId).then((response) => {
-        return response.data as Feature;
-      })
-    );
+    return this.getUnit().then((rooms) => {
+      for (const room of rooms) {
+        for (const device of room.devices) {
+          for (const feature of device.features) {
+            if (feature.id.toString() === featureId) return feature;
+          }
+        }
+      }
+      return {
+        value: 0,
+      };
+    });
   }
 
   updateFeature(featureId: string, value: CharacteristicValue) {
@@ -181,7 +203,9 @@ class HomebridgeIotas {
     for (const feature of device.features ?? []) {
       if (
         !feature.featureTypeSettable &&
-        !(["current_temperature", "battery"].includes(feature.featureTypeCategory))
+        !["current_temperature", "battery"].includes(
+          feature.featureTypeCategory
+        )
       )
         continue;
       if (feature.eventTypeName === "OnOff") {
@@ -304,7 +328,11 @@ class HomebridgeIotas {
             .on(
               "get",
               this.getCharacteristic.bind(this, feature.id.toString(), fToC)
-            ).on("set", this.setCharacteristic.bind(this, feature.id.toString(), cToF));
+            )
+            .on(
+              "set",
+              this.setCharacteristic.bind(this, feature.id.toString(), cToF)
+            );
         }
         if (feature.featureTypeCategory === "cool_set_point") {
           service
@@ -312,7 +340,11 @@ class HomebridgeIotas {
             .on(
               "get",
               this.getCharacteristic.bind(this, feature.id.toString(), fToC)
-            ).on("set", this.setCharacteristic.bind(this, feature.id.toString(), cToF));
+            )
+            .on(
+              "set",
+              this.setCharacteristic.bind(this, feature.id.toString(), cToF)
+            );
           const tempCats = ["cool_set_point", "heat_set_point"];
           if (tempCats.includes(feature.featureTypeCategory)) {
             const features = tempCats.reduce((acc, cur) => {
@@ -373,7 +405,8 @@ class HomebridgeIotas {
                   next: CharacteristicSetCallback
                 ) => {
                   const modeFeature = device.features.find(
-                    (feature) => feature.featureTypeCategory === "thermostat_mode"
+                    (feature) =>
+                      feature.featureTypeCategory === "thermostat_mode"
                   )!!;
                   this.getCharacteristic(
                     modeFeature.id.toString(),
@@ -468,11 +501,7 @@ class HomebridgeIotas {
           .getCharacteristic(this.Characteristic.BatteryLevel)
           .on(
             "get",
-            this.getCharacteristic.bind(
-              this,
-              feature.id.toString(),
-              null
-            )
+            this.getCharacteristic.bind(this, feature.id.toString(), null)
           );
       }
     }
@@ -505,7 +534,9 @@ class HomebridgeIotas {
     if (
       !device.features.some(
         (feature) =>
-          ["Temperature", "OnOff", "Level", "ThermostatMode"].includes(feature.eventTypeName) &&
+          ["Temperature", "OnOff", "Level", "ThermostatMode"].includes(
+            feature.eventTypeName
+          ) &&
           (feature.featureTypeSettable ||
             feature.featureTypeCategory === "current_temperature")
       )
@@ -546,34 +577,20 @@ class HomebridgeIotas {
 
   discoverDevices() {
     this.withAuth().then((api) => {
-      api.get("/account/me").then((response) => {
-        const accountId = response.data.id;
-        this.log.info("Found account id " + accountId);
-        api.get("/account/" + accountId + "/residency").then((response) => {
-          if (response.data.length > 0) {
-            const unit = response.data[0].unit;
-            this.log.info("Found unit " + unit);
-            api.get("unit/" + unit + "/rooms").then((response) => {
-              const rooms = response.data as Rooms;
-              const deviceIds = rooms.map((room) =>
-                room.devices.map(this.tryAddDevice.bind(this, room.name))
-              );
-              this.accessories.forEach((accessory) => {
-                if (
-                  !deviceIds.some((ids) =>
-                    ids.some((id) => id === accessory.context.id)
-                  )
-                ) {
-                  this.api.unregisterPlatformAccessories(
-                    PLUGIN_NAME,
-                    PLATFORM_NAME,
-                    [accessory]
-                  );
-                }
-              });
-            });
-          } else {
-            this.log.error("Unable to find any units. Abandoning...");
+      api.get("unit/" + this.unit + "/rooms").then((response) => {
+        const rooms = response.data as Rooms;
+        const deviceIds = rooms.map((room) =>
+          room.devices.map(this.tryAddDevice.bind(this, room.name))
+        );
+        this.accessories.forEach((accessory) => {
+          if (
+            !deviceIds.some((ids) =>
+              ids.some((id) => id === accessory.context.id)
+            )
+          ) {
+            this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+              accessory,
+            ]);
           }
         });
       });
@@ -581,14 +598,35 @@ class HomebridgeIotas {
   }
 
   withAuth() {
-    return this.getToken().then((token) =>
-      _axios.create({
-        baseURL: IOTAS_URL,
-        headers: {
-          Authorization: "Bearer " + token,
-        },
-      })
-    );
+    return this.getToken()
+      .then((token) =>
+        _axios.create({
+          baseURL: IOTAS_URL,
+          headers: {
+            Authorization: "Bearer " + token,
+          },
+        })
+      )
+      .then((api) => {
+        if (this.unit !== 0) return api;
+        else
+          return api.get("/account/me").then((response) => {
+            const accountId = response.data.id;
+            this.log.info("Found account id " + accountId);
+            return api
+              .get("/account/" + accountId + "/residency")
+              .then((response) => {
+                if (response.data.length > 0) {
+                  this.unit = response.data[0].unit;
+                  this.log.info("Found unit " + this.unit);
+                  return api;
+                } else {
+                  this.log.error("Unable to find any units. Abandoning...");
+                  throw Error("Unable to find any units. Abandoning...");
+                }
+              });
+          });
+      });
   }
 
   getToken() {

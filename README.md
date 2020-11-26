@@ -5,6 +5,7 @@ Based off of stevesample/homebridge-iotas-switch
 - Switch
 - Outlet
 - Light (e.g. brightness levels)
+- Thermostats
 
 # Installation
 1. Install homebridge using: `npm install -g homebridge`

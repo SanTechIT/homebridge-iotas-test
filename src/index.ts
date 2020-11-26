@@ -681,6 +681,8 @@ class HomebridgeIotas {
         .catch((error) => {
           console.log("error: ");
           console.log(error);
+          console.log("Trying again in 10 minutes...")
+          setTimeout(() => this.authenticate(), 1000 * 60 * 10);
         });
       this.authenticateRequest.finally(() => (this.authenticateRequest = null));
     }

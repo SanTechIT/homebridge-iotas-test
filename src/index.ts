@@ -183,7 +183,7 @@ class HomebridgeIotas {
         return next();
       })
       .catch((err) => {
-        this.log.error("error setting value");
+        this.log.error("error setting value for feature ", featureId, format);
         this.log.error(err.toString());
         return next(err);
       });

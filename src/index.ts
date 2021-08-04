@@ -166,7 +166,7 @@ class HomebridgeIotas {
         return next(null, format === null ? res.value : format(res.value));
       })
       .catch((err) => {
-        this.log.error("error getting value");
+        this.log.error("error getting value for feature", featureId, format);
         this.log.error(err.toString());
         return next(err);
       });

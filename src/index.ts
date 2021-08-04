@@ -605,6 +605,12 @@ class HomebridgeIotas {
           headers: {
             Authorization: "Bearer " + token,
           },
+          validateStatus: (status) => {
+            if (status === 401) {
+              this.token = null; 
+            }
+            return status >= 200 && status < 300;
+          }
         })
       )
       .then((api) => {

@@ -208,7 +208,7 @@ class HomebridgeIotas {
         )
       )
         continue;
-      if (feature.eventTypeName === "OnOff") {
+      if (feature.eventTypeName === "OnOff" && ["Lock", "Light", "Operation Mode"].includes(feature.featureTypeName)) {
         let service = accessory.getService(this.Service.Switch);
         if (typeof service === "undefined") {
           service = new this.Service.Switch(accessory.displayName);

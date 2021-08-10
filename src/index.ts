@@ -71,6 +71,29 @@ interface Feature {
   values?: string;
 }
 
+interface Residency {
+  id: string;
+  accountId: number;
+  unit: number;
+  buildingId: number;
+  unitName: string;
+  dateFrom: string;
+  tenant: boolean;
+  unitAdmin: boolean;
+  email: string;
+  firstName: string;
+  lastName: string;
+  createdAt: string;
+  suspended: boolean;
+  account: {
+    id: number;
+    email: string;
+    firstName: string;
+    lastName: string;
+    hasPassword: boolean;
+  };
+}
+
 function cToF(c: any) {
   return (Number(c) * 9) / 5 + 32;
 }
@@ -86,8 +109,8 @@ function fToC(f: any) {
  */
 class HomebridgeIotas {
   public readonly Service: typeof Service = this.api.hap.Service;
-  public readonly Characteristic: typeof Characteristic = this.api.hap
-    .Characteristic;
+  public readonly Characteristic: typeof Characteristic =
+    this.api.hap.Characteristic;
 
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
@@ -208,7 +231,10 @@ class HomebridgeIotas {
         )
       )
         continue;
-      if (feature.eventTypeName === "OnOff" && ["Lock", "Light", "Operation Mode"].includes(feature.featureTypeName)) {
+      if (
+        feature.eventTypeName === "OnOff" &&
+        ["Lock", "Light", "Operation Mode"].includes(feature.featureTypeName)
+      ) {
         let service = accessory.getService(this.Service.Switch);
         if (typeof service === "undefined") {
           service = new this.Service.Switch(accessory.displayName);
@@ -475,18 +501,14 @@ class HomebridgeIotas {
               feature.id.toString(),
               (v) =>
                 ({
-                  [this.Characteristic.TargetHeatingCoolingState.HEAT.toString()]: split.indexOf(
-                    "Heat"
-                  ),
-                  [this.Characteristic.TargetHeatingCoolingState.COOL.toString()]: split.indexOf(
-                    "Cool"
-                  ),
-                  [this.Characteristic.TargetHeatingCoolingState.OFF.toString()]: split.indexOf(
-                    "Off"
-                  ),
-                  [this.Characteristic.TargetHeatingCoolingState.AUTO.toString()]: split.indexOf(
-                    "Auto"
-                  ),
+                  [this.Characteristic.TargetHeatingCoolingState.HEAT.toString()]:
+                    split.indexOf("Heat"),
+                  [this.Characteristic.TargetHeatingCoolingState.COOL.toString()]:
+                    split.indexOf("Cool"),
+                  [this.Characteristic.TargetHeatingCoolingState.OFF.toString()]:
+                    split.indexOf("Off"),
+                  [this.Characteristic.TargetHeatingCoolingState.AUTO.toString()]:
+                    split.indexOf("Auto"),
                 }[v.toString()])
             )
           );
@@ -607,10 +629,10 @@ class HomebridgeIotas {
           },
           validateStatus: (status) => {
             if (status === 401) {
-              this.token = null; 
+              this.token = null;
             }
             return status >= 200 && status < 300;
-          }
+          },
         })
       )
       .then((api) => {
@@ -621,10 +643,34 @@ class HomebridgeIotas {
             this.log.info("Found account id " + accountId);
             return api
               .get("/account/" + accountId + "/residency")
-              .then((response) => {
+              .then((response: { data: Residency[] }) => {
                 if (response.data.length > 0) {
+                  console.log(
+                    "Found unit(s) ",
+                    response.data.map((unit) => unit.unitName)
+                  );
+                  if (this.config.unit != null) {
+                    const customUnit = response.data.find(
+                      (unit) => unit.unitName === this.config.unit
+                    )?.unit;
+                    if (customUnit != null) {
+                      this.unit = customUnit;
+                      this.log.info("Using custom unit ", customUnit);
+                      return;
+                    } else {
+                      this.log.warn(
+                        "Could not find unit ",
+                        customUnit,
+                        ", using default"
+                      );
+                    }
+                  }
                   this.unit = response.data[0].unit;
-                  this.log.info("Found unit " + this.unit);
+                  this.log.info(
+                    "Using first unit found: ",
+                    this.unit,
+                    '. If you would like to use a custom unit, please set the "unit" property in the config.'
+                  );
                   return api;
                 } else {
                   this.log.error("Unable to find any units. Abandoning...");
@@ -687,7 +733,7 @@ class HomebridgeIotas {
         .catch((error) => {
           console.log("error: ");
           console.log(error);
-          console.log("Trying again in 10 minutes...")
+          console.log("Trying again in 10 minutes...");
           setTimeout(() => this.authenticate(), 1000 * 60 * 10);
         });
       this.authenticateRequest.finally(() => (this.authenticateRequest = null));

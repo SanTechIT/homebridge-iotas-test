@@ -21,7 +21,8 @@ Configuration sample:
     "platform" : "homebridge-iotas",
     "name" : "Iotas",
     "username": "[My_iotas_username]",
-    "password": "[My_iotas_password]"
+    "password": "[My_iotas_password]",
+    "unit": "[unit_name]" // optional, will default to the first one found
   }
 ]
 ```

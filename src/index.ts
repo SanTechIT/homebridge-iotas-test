@@ -669,7 +669,7 @@ class HomebridgeIotas {
                   this.unit = response.data[0].unit;
                   this.log.info(
                     "Using first unit found: ",
-                    this.unit,
+                    response.data[0].unitName,
                     '. If you would like to use a custom unit, please set the "unit" property in the config.'
                   );
                   return api;

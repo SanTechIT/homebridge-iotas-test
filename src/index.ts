@@ -656,7 +656,7 @@ class HomebridgeIotas {
                     if (customUnit != null) {
                       this.unit = customUnit;
                       this.log.info("Using custom unit ", customUnit);
-                      return;
+                      return api;
                     } else {
                       this.log.warn(
                         "Could not find unit ",

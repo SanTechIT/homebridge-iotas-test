@@ -30,6 +30,7 @@ const axios = _axios.create({
 interface Config extends PlatformConfig {
   username: string;
   password: string;
+  unit?: string;
 }
 
 type Rooms = Room[];
@@ -655,12 +656,12 @@ class HomebridgeIotas {
                     )?.unit;
                     if (customUnit != null) {
                       this.unit = customUnit;
-                      this.log.info("Using custom unit ", customUnit);
+                      this.log.info("Using custom unit ", this.config.unit);
                       return api;
                     } else {
                       this.log.warn(
                         "Could not find unit ",
-                        customUnit,
+                        this.config.unit,
                         ", using default"
                       );
                     }

@@ -1,5 +1,5 @@
 {
-  "name": "homebridge-iotas",
+  "name": "homebridge-iotas-test",
   "version": "1.4.2",
   "description": "A homebridge plugin to control an IOTAS switch",
   "main": "dist/index.js",

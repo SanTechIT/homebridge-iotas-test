@@ -174,7 +174,7 @@ class HomebridgeIotas {
       value: value,
     };
     return this.withAuth().then((api) =>
-      api.put(`/feature/${featureId}`, body).then((response) => {
+      api.post(`/feature/${featureId}`, body).then((response) => {
         return response.data;
       })
     );

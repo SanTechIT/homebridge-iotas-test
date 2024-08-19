@@ -14,8 +14,8 @@ import {
 import _axios from "axios";
 import jwt_decode from "jwt-decode";
 
-const PLUGIN_NAME = "homebridge-iotas";
-const PLATFORM_NAME = "homebridge-iotas";
+const PLUGIN_NAME = "homebridge-iotas-test";
+const PLATFORM_NAME = "homebridge-iotas-test";
 
 export = (api: API) => {
   api.registerPlatform(PLUGIN_NAME, HomebridgeIotas as any);

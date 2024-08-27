@@ -1,16 +1,19 @@
 # homebridge-iotas
-Based off of stevesample/homebridge-iotas-switch
-Based off of kpsuperplane/homebridge-iotas
+- Based off of stevesample/homebridge-iotas-switch
+- Based off of kpsuperplane/homebridge-iotas
 
 ## Changes
-Fixed support for IOTAS API changes (circa 2022)
-Fixed door showing up as a thermostat.
-Room Outlet Switch (WIP)
+- Fixed support for IOTAS API changes (circa 2022)
+- Fixed door showing up as a thermostat.
+- Room Outlet Switch (WIP)
 
 ## Will not fix
 The door status is broken on IOTAS's API (The door function, however, works just fine).
+
 If you use the keypad or the door is configured to auto-lock, the lock state becomes desynced. 
+
 As a result, Homekit will show "Locking..." even when the door is locked, and vice versa.
+
 This problem is also observed on the first-party IOTAS app. (More research is needed for workarounds if any exist)
 
 ## Currently supports

@@ -187,7 +187,6 @@ class HomebridgeIotas {
     ) {
         this.getFeature(featureId)
             .then((res) => {
-                this.log.info(`feature: ${res.value}`)
                 return next(null, format === null ? res.value : format(res.value));
             })
             .catch((err) => {
@@ -661,7 +660,7 @@ class HomebridgeIotas {
                         if (status === 401) {
                             this.token = null;
                         }
-                        this.log.info("Token: ", this.token)
+                        // this.log.info("Token: ", this.token)
                         return status >= 200 && status < 300;
                     },
                 })

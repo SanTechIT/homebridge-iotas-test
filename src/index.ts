@@ -283,7 +283,7 @@ class HomebridgeIotas {
                         this.getCharacteristic.bind(
                             this,
                             feature.id.toString(),
-                            (value: number) => value === 0
+                            (value: number) => value === 1
                         )
                     )
             } else if (

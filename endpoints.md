@@ -1,4 +1,5 @@
 This is by no means comprehensive, nor do I claim it is.
+
 Many values are inferred, so they may be wrong, particularly for IDs.
 
 ## API Datas
@@ -397,11 +398,18 @@ See [EVENT TYPE](EVENTTYPE%20Response)
 ]
 ```
 
+#### DEVICES Response
+
+```json
+
+```
+
+
 #### BUILDING Response
 
 ```json
 {
-  "id": "buildingId: Int",
+  "id": "{buildingId: Int}",
   "facilityDescription": "{someId: Int}",
   "managerFirstName": "{firstName: String}",
   "managerLastName": "{lastName: String}",
@@ -448,4 +456,3 @@ See [EVENT TYPE](EVENTTYPE%20Response)
   "suites": "{boolean: Boolean}"
 }
 ```
-
